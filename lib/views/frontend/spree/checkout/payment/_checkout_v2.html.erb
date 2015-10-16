@@ -1,0 +1,102 @@
+<%= render "spree/checkout/payment/gateway", payment_method: payment_method %>
+
+<% if payment_method.preferences[:use_card_tokenisation] %>
+<!-- Using Card Tokenisation For Checkout V2 Gateway -->
+<script type="text/javascript" src="https://<%= payment_method.preferences[:test_mode] ? 'sandbox.checkout.com/js/v1/checkoutkit.js' : 'cdn.checkout.com/js/checkoutkit.js' %>"></script>
+<script type="text/javascript">
+  // Payment Method Element & Id
+  Spree.checkoutV2PaymentMethod = $('#payment_method_' + <%= payment_method.id %>);
+  Spree.checkoutV2PaymentMethodId = Spree.checkoutV2PaymentMethod.prop('id').split("_")[2];
+
+
+  // CheckoutKit Credentials
+  CheckoutKit.setPublicKey('<%= payment_method.preferred_publishable_key %>');
+  CheckoutKit.setCustomerEmail('<%= current_order.email %>');
+
+
+  // CheckoutKit API Error Event Handler
+  CheckoutKit.addEventHandler(CheckoutKit.Events.API_ERROR, function(response){
+    // Create Error Messages
+    var messages = '<b>'+response.data.message+'</b>';
+    messages += '<ul>';
+    $.each(response.data.errors, function(index, value){
+        messages += '<li>'+value+'</li>';
+    });
+    messages += '</ul>';
+
+    // Show Errors
+    $('#checkoutV2Error').html(messages);
+    $('#checkoutV2Error').show();
+
+    // Enable Inputs
+    Spree.checkoutV2PaymentMethod.find('#name_on_card_'+Spree.checkoutV2PaymentMethodId+', #card_number, #card_expiry, #card_code').prop("disabled", false);
+    $('#checkout_form_payment input[type="submit"]').removeClass('disabled').prop('disabled', false);
+  });
+
+
+  // Response Handler
+  var checkoutV2ResponseHandler = function(response){
+    // Disable Inputs (Meaning they won't be submitted with form)
+    Spree.checkoutV2PaymentMethod.find('#card_number, #card_expiry, #card_code').prop("disabled", true);
+
+    // Enable Name Input
+    Spree.checkoutV2PaymentMethod.find('#name_on_card_'+Spree.checkoutV2PaymentMethodId).prop("disabled", false);
+
+    // Create Hidden Inputs With Data From API
+    Spree.checkoutV2PaymentMethod.append("<input type='hidden' id='checkout_v2_token' name='payment_source[" + Spree.checkoutV2PaymentMethodId + "][gateway_payment_profile_id]' value='" + response.id + "'/>");
+    Spree.checkoutV2PaymentMethod.append("<input type='hidden' name='payment_source[" + Spree.checkoutV2PaymentMethodId + "][paymentMethod]' value='" + response.card.paymentMethod + "'/>");
+    Spree.checkoutV2PaymentMethod.append("<input type='hidden' name='payment_source[" + Spree.checkoutV2PaymentMethodId + "][last_digits]' value='" + response.card.last4 + "'/>");
+    Spree.checkoutV2PaymentMethod.append("<input type='hidden' name='payment_source[" + Spree.checkoutV2PaymentMethodId + "][month]' value='" + response.card.expiryMonth + "'/>");
+    Spree.checkoutV2PaymentMethod.append("<input type='hidden' name='payment_source[" + Spree.checkoutV2PaymentMethodId + "][year]' value='" + response.card.expiryYear + "'/>");
+
+    // Submit
+    return Spree.checkoutV2PaymentMethod.parents("form").trigger('submit');
+  };
+
+
+  // On Page Ready
+  $(document).ready(function() {
+    // Prepend div to Payment Method Element to display any errors
+    Spree.checkoutV2PaymentMethod.prepend("<div id='checkoutV2Error' class='errorExplanation' style='display:none'></div>");
+
+    // Form Submission Handler
+    $('#checkout_form_payment').submit(function(e) {
+      var expiration, card;
+
+      // Hide any existing errors
+      $('#checkoutV2Error').hide();
+
+      // Check if the token input exists
+      // Meaning we already gotten a token and can do a normal submission
+      if ( $( "#checkout_v2_token" ).length ){
+        return true;
+      }
+
+      // If CheckoutV2 Payment Method Element is visible, stop form submission and create card token
+      if (Spree.checkoutV2PaymentMethod.is(':visible')) {
+        e.preventDefault(); // Stop form submission
+
+        // Disable Inputs
+        Spree.checkoutV2PaymentMethod.find('#name_on_card_'+Spree.checkoutV2PaymentMethodId+', #card_number, #card_expiry, #card_code').prop("disabled", true);
+
+        // Create Card Token
+        expiration = $('.cardExpiry:visible').payment('cardExpiryVal');
+        card = {
+          number:       $('.cardNumber:visible').val(),
+          name:         $('#name_on_card_'+Spree.checkoutV2PaymentMethodId+':visible').val(),
+          expiryMonth:  expiration.month || 0,
+          expiryYear:   expiration.year || 0,
+          cvv:          $('.cardCode:visible').val()
+        };
+        CheckoutKit.createCardToken(card, function(response){
+          // If response has a card and id and not of type error, call the response handler.
+          // If it is an error, the added error handler above will pick it up
+          if (('id' in response) && ('card' in response) && !(response.type == 'error')) {
+            checkoutV2ResponseHandler(response);
+          }
+        });
+      }
+    });
+  });
+</script>
+<% end %>
