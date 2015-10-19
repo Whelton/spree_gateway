@@ -32,6 +32,7 @@ module ActiveMerchant #:nodoc:
       end
 
       def authorize(amount, payment_method, options={})
+        byebug
         post = {}
         post[:autoCapture] = "n"
         add_invoice(post, amount, options)

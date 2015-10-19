@@ -12,19 +12,19 @@ class Spree::Gateway::CheckoutV2Gateway < Spree::Gateway
     ActiveMerchant::Billing::CheckoutV2
   end
 
-  def payment_profiles_supported?
-    self.preferred_use_card_tokenisation
-  end
-
-  def create_profile(payment)
-    return nil
-  end
-
   def authorize(money, creditcard, gateway_options)
     if creditcard.number.blank? && creditcard.gateway_payment_profile_id.present?
       provider.authorize(money, creditcard.gateway_payment_profile_id, gateway_options)
     else
       provider.authorize(money, creditcard, gateway_options)
+    end
+  end
+
+  def purchase(money, creditcard, gateway_options)
+    if creditcard.number.blank? && creditcard.gateway_payment_profile_id.present?
+      provider.purchase(money, creditcard.gateway_payment_profile_id, gateway_options)
+    else
+      provider.purchase(money, creditcard, gateway_options)
     end
   end
 
